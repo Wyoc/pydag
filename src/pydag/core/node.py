@@ -13,7 +13,16 @@ from .retry import RetryConfig, RetryStats, execute_with_retry_async, execute_wi
 
 
 class NodeStatus(Enum):
-    """Status of a node in the DAG."""
+    """Status of a node in the DAG execution.
+    
+    Attributes:
+        PENDING: Node is waiting to be executed.
+        RUNNING: Node is currently executing.
+        COMPLETED: Node has completed successfully.
+        FAILED: Node execution failed with an exception.
+        SKIPPED: Node was skipped due to failed dependencies.
+        CONDITION_NOT_MET: Node was skipped because its condition evaluated to False.
+    """
     PENDING = "pending"
     RUNNING = "running"
     COMPLETED = "completed"
@@ -24,7 +33,24 @@ class NodeStatus(Enum):
 
 @dataclass
 class Node:
-    """A node in the DAG representing a function to be executed."""
+    """A node in the DAG representing a function to be executed.
+    
+    Each node wraps a function along with its execution metadata, dependencies,
+    and configuration. The node handles both synchronous and asynchronous functions,
+    retry logic, conditional execution, and status tracking.
+    
+    Attributes:
+        name: Unique identifier for the node.
+        func: The function to execute (can be sync or async).
+        dependencies: Set of node names this node depends on.
+        condition: Optional function that must return True for execution.
+        retry_config: Configuration for retry behavior on failures.
+        status: Current execution status of the node.
+        result: Result value from successful execution.
+        error: Exception from failed execution.
+        execution_time: Total time taken for execution in seconds.
+        retry_stats: Statistics about retry attempts.
+    """
     name: str
     func: Callable
     dependencies: Set[str] = field(default_factory=set)
