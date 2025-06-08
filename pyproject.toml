@@ -1,0 +1,23 @@
+[project]
+name = "pydag"
+version = "0.1.0"
+description = ""
+authors = [
+    {name = "Wyoc",email = "dirtykartoons@gmail.com"}
+]
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "networkx",
+    "matplotlib"
+]
+
+[project.optional-dependencies]
+test = [
+    "pytest",
+    "pytest-asyncio"
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
