@@ -19,15 +19,20 @@ from .visualization import visualize_dag
 
 
 class DAG:
-    """Directed Acyclic Graph for executing functions with dependencies."""
+    """Directed Acyclic Graph for executing functions with dependencies.
+    
+    A DAG represents a workflow where functions (nodes) are executed in dependency order.
+    Supports both synchronous and asynchronous execution with concurrency control,
+    conditional execution, retry logic, and parallel branch optimization.
+    """
     
     def __init__(self, name: str, max_workers: Optional[int] = None):
-        """
-        Initialize a new DAG.
+        """Initialize a new DAG.
         
         Args:
-            name: Name of the DAG
-            max_workers: Maximum number of concurrent workers (defaults to CPU count)
+            name: Name of the DAG for identification and logging.
+            max_workers: Maximum number of concurrent workers for async execution.
+                Defaults to the number of CPU cores if not specified.
         """
         self.name = name
         self.nodes: Dict[str, Node] = {}
@@ -36,22 +41,24 @@ class DAG:
         self.logger = logging.getLogger(f"dagexec.{name}")
     
     def add_node(self, name: str, func: Callable, dependencies: Optional[List[str]] = None, condition: Optional[Callable[[], bool]] = None, retry_config: Optional[RetryConfig] = None) -> Node:
-        """
-        Add a function as a node to the DAG.
+        """Add a function as a node to the DAG.
         
         Args:
-            name: Unique name for the node
-            func: Function to execute
-            dependencies: List of node names this node depends on
-            condition: Optional condition function that must return True for the node to execute
-            retry_config: Optional retry configuration for failed executions
-            
+            name: Unique name for the node within this DAG.
+            func: Function to execute. Can be sync or async.
+            dependencies: List of node names this node depends on. The node will
+                only execute after all dependencies have completed successfully.
+            condition: Optional condition function that must return True for the
+                node to execute. If False, the node will be skipped.
+            retry_config: Optional retry configuration for handling failed executions
+                with exponential backoff.
+                
         Returns:
-            The created Node object
+            The created Node object containing the function and metadata.
             
         Raises:
-            DuplicateNodeError: If node with same name already exists
-            NodeNotFoundError: If dependency does not exist
+            DuplicateNodeError: If a node with the same name already exists.
+            NodeNotFoundError: If any dependency does not exist in the DAG.
         """
         if name in self.nodes:
             raise DuplicateNodeError(f"Node '{name}' already exists in the DAG")
@@ -74,20 +81,25 @@ class DAG:
         return node
     
     def visualize(self, filename: Optional[str] = None) -> None:
-        """
-        Visualize the DAG.
+        """Visualize the DAG structure and node statuses.
+        
+        Creates a visual representation of the DAG showing nodes, dependencies,
+        and execution status using different colors for each state.
         
         Args:
-            filename: If provided, save the visualization to this file
+            filename: Optional file path to save the visualization. If not provided,
+                the plot will be displayed interactively.
         """
         visualize_dag(self._graph, self.nodes, filename)
     
     def verify_acyclic(self) -> bool:
-        """
-        Verify that the graph is acyclic.
+        """Verify that the graph is acyclic.
+        
+        Checks for cycles in the DAG using NetworkX cycle detection.
+        A cyclic graph cannot be executed as it would create infinite loops.
         
         Returns:
-            True if the graph is acyclic, False otherwise
+            True if the graph is acyclic and can be executed, False otherwise.
         """
         try:
             cycles = list(nx.simple_cycles(self._graph))
@@ -99,14 +111,20 @@ class DAG:
             return True
     
     def identify_parallel_branches(self) -> List[List[str]]:
-        """
-        Identify independent parallel branches in the DAG.
+        """Identify independent parallel branches in the DAG.
         
         A parallel branch is a maximal set of nodes that can execute
-        independently from other branches until they reconverge.
+        independently from other branches until they reconverge at a
+        common descendant node.
         
         Returns:
             List of branches, where each branch is a list of node names
+            in topological order. Empty list if no parallel branches exist.
+            
+        Example:
+            For a DAG: A -> B -> D
+                       A -> C -> D
+            Returns: [['B'], ['C']] representing two parallel branches.
         """
         if not self._graph.nodes:
             return []
@@ -128,7 +146,11 @@ class DAG:
         return branches
     
     def _find_branches_from_splits(self) -> List[List[str]]:
-        """Find branches starting from split points in the DAG."""
+        """Find branches starting from split points in the DAG.
+        
+        Returns:
+            List of branches identified from nodes with multiple successors.
+        """
         branches = []
         
         # Find nodes that have multiple successors (split points)
@@ -151,15 +173,19 @@ class DAG:
         return branches
     
     def _get_branch_from_node(self, start_node: str, exclude_splits: bool = False) -> List[str]:
-        """
-        Get all nodes reachable from a starting node until reconvergence.
+        """Get all nodes reachable from a starting node until reconvergence.
+        
+        Traces a path through the DAG starting from the given node until
+        reaching a point where branches reconverge (node with multiple predecessors)
+        or the path ends.
         
         Args:
-            start_node: Node to start the branch from
-            exclude_splits: If True, stop at nodes with multiple successors
-            
+            start_node: Node to start tracing the branch from.
+            exclude_splits: If True, stop tracing at nodes with multiple successors
+                to avoid including sub-branches.
+                
         Returns:
-            List of node names in the branch
+            List of node names in the branch in traversal order.
         """
         branch = [start_node]
         current = start_node
@@ -200,14 +226,14 @@ class DAG:
         return branch
     
     def get_branch_execution_order(self, branch_nodes: List[str]) -> List[str]:
-        """
-        Get the execution order for nodes within a specific branch.
+        """Get the execution order for nodes within a specific branch.
         
         Args:
-            branch_nodes: List of node names in the branch
+            branch_nodes: List of node names in the branch.
             
         Returns:
-            Topologically sorted list of node names
+            Topologically sorted list of node names respecting dependencies
+            within the branch.
         """
         # Create subgraph for this branch
         subgraph = self._graph.subgraph(branch_nodes)
@@ -216,11 +242,13 @@ class DAG:
         return list(nx.topological_sort(subgraph))
     
     def get_ready_nodes(self) -> List[Node]:
-        """
-        Get nodes that are ready to execute (all dependencies are completed and conditions are met).
+        """Get nodes that are ready to execute.
+        
+        A node is ready if all its dependencies have completed successfully
+        and any condition function evaluates to True.
         
         Returns:
-            List of nodes ready to execute
+            List of Node objects that are ready for execution.
         """
         ready_nodes = []
         for name, node in self.nodes.items():
@@ -253,17 +281,20 @@ class DAG:
         return ready_nodes
     
     def execute_sync(self, **kwargs) -> Dict[str, Any]:
-        """
-        Execute the DAG synchronously.
+        """Execute the DAG synchronously in topological order.
+        
+        Executes all nodes sequentially, one at a time, following dependency order.
+        Async functions are executed in a new event loop for each call.
         
         Args:
-            **kwargs: Keyword arguments to pass to all functions
+            **kwargs: Keyword arguments passed to all node functions.
             
         Returns:
-            Dictionary mapping node names to their results
+            Dictionary mapping node names to their execution results.
+            Only includes results from successfully completed nodes.
             
         Raises:
-            CyclicGraphError: If the graph contains cycles
+            CyclicGraphError: If the graph contains cycles and cannot be executed.
         """
         if not self.verify_acyclic():
             raise CyclicGraphError("Cannot execute cyclic graph")
@@ -306,17 +337,21 @@ class DAG:
                 if node.status == NodeStatus.COMPLETED}
     
     async def execute_async(self, **kwargs) -> Dict[str, Any]:
-        """
-        Execute the DAG asynchronously with concurrency.
+        """Execute the DAG asynchronously with concurrency.
+        
+        Executes nodes concurrently when their dependencies are satisfied,
+        using a thread pool for synchronous functions and async tasks for
+        asynchronous functions.
         
         Args:
-            **kwargs: Keyword arguments to pass to all functions
+            **kwargs: Keyword arguments passed to all node functions.
             
         Returns:
-            Dictionary mapping node names to their results
+            Dictionary mapping node names to their execution results.
+            Only includes results from successfully completed nodes.
             
         Raises:
-            CyclicGraphError: If the graph contains cycles
+            CyclicGraphError: If the graph contains cycles and cannot be executed.
         """
         if not self.verify_acyclic():
             raise CyclicGraphError("Cannot execute cyclic graph")
@@ -394,21 +429,24 @@ class DAG:
                 if node.status == NodeStatus.COMPLETED}
     
     async def execute_parallel_branches(self, **kwargs) -> Dict[str, Any]:
-        """
-        Execute the DAG with parallel branch optimization.
+        """Execute the DAG with parallel branch optimization.
         
-        This method identifies independent branches in the DAG and executes
-        them concurrently, which can provide better performance than regular
-        async execution when the DAG has distinct parallel paths.
+        Identifies independent branches in the DAG and executes them concurrently
+        with separate thread pools. This can provide significantly better performance
+        than regular async execution for DAGs with distinct parallel paths.
         
         Args:
-            **kwargs: Keyword arguments to pass to all functions
+            **kwargs: Keyword arguments passed to all node functions.
             
         Returns:
-            Dictionary mapping node names to their results
+            Dictionary mapping node names to their execution results.
+            Only includes results from successfully completed nodes.
             
         Raises:
-            CyclicGraphError: If the graph contains cycles
+            CyclicGraphError: If the graph contains cycles and cannot be executed.
+            
+        Note:
+            Falls back to regular async execution if no parallel branches are detected.
         """
         if not self.verify_acyclic():
             raise CyclicGraphError("Cannot execute cyclic graph")
@@ -459,16 +497,19 @@ class DAG:
         return all_results
     
     async def _execute_branch(self, branch_nodes: List[str], branch_name: str, **kwargs) -> Dict[str, Any]:
-        """
-        Execute a single branch of nodes.
+        """Execute a single branch of nodes with its own thread pool.
         
         Args:
-            branch_nodes: List of node names in this branch
-            branch_name: Name for logging purposes
-            **kwargs: Keyword arguments to pass to functions
+            branch_nodes: List of node names in this branch.
+            branch_name: Name identifier for logging purposes.
+            **kwargs: Keyword arguments passed to node functions.
             
         Returns:
-            Dictionary mapping node names to their results
+            Dictionary mapping node names to their execution results
+            for successfully completed nodes in this branch.
+            
+        Raises:
+            RuntimeError: If the branch execution becomes stalled.
         """
         self.logger.info(f"Starting execution of {branch_name} with {len(branch_nodes)} nodes")
         
@@ -571,7 +612,15 @@ class DAG:
             executor.shutdown()
     
     async def _execute_remaining_nodes(self, remaining_nodes: set, **kwargs) -> Dict[str, Any]:
-        """Execute nodes that weren't part of any parallel branch."""
+        """Execute nodes that weren't part of any parallel branch.
+        
+        Args:
+            remaining_nodes: Set of node names not included in any branch.
+            **kwargs: Keyword arguments passed to node functions.
+            
+        Returns:
+            Dictionary mapping node names to their execution results.
+        """
         results = {}
         
         # Simple topological execution for remaining nodes
@@ -623,16 +672,22 @@ class DAG:
         return results
     
     def execute(self, async_execution: bool = True, parallel_branches: bool = False, **kwargs) -> Dict[str, Any]:
-        """
-        Execute the DAG.
+        """Execute the DAG using the specified execution strategy.
         
         Args:
-            async_execution: Whether to execute asynchronously with concurrency
-            parallel_branches: Whether to use parallel branch optimization
-            **kwargs: Keyword arguments to pass to all functions
+            async_execution: Whether to execute asynchronously with concurrency.
+                If False, executes synchronously in topological order.
+            parallel_branches: Whether to use parallel branch optimization.
+                If True, identifies and executes independent branches concurrently.
+                Takes precedence over async_execution if both are True.
+            **kwargs: Keyword arguments passed to all node functions.
             
         Returns:
-            Dictionary mapping node names to their results
+            Dictionary mapping node names to their execution results.
+            Only includes results from successfully completed nodes.
+            
+        Note:
+            Execution statistics are logged including timing and success/failure counts.
         """
         execution_mode = "parallel branches" if parallel_branches else ("async" if async_execution else "sync")
         self.logger.info(f"Executing DAG '{self.name}' with {len(self.nodes)} nodes using {execution_mode} mode")

@@ -8,7 +8,11 @@ from . import DAG, task, RetryConfig
 
 
 def run_examples():
-    """Run example DAG executions."""
+    """Run comprehensive examples demonstrating PyDAG features.
+    
+    Demonstrates sync/async tasks, dependencies, conditions, retry logic,
+    and visualization capabilities.
+    """
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
@@ -149,7 +153,12 @@ def run_examples():
 
 
 def run_parallel_branch_example():
-    """Demonstrate parallel branch execution capabilities."""
+    """Demonstrate parallel branch execution capabilities.
+    
+    Creates a realistic data processing pipeline with three parallel branches
+    for user, order, and product processing, showing performance improvements
+    from parallel execution.
+    """
     # Create a DAG with distinct parallel branches
     branch_dag = DAG("parallel_branches_demo", max_workers=4)
     

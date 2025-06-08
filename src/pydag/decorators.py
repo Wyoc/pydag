@@ -8,18 +8,29 @@ if TYPE_CHECKING:
 
 
 def task(dag: "DAG", name: str, dependencies: Optional[List[str]] = None, condition: Optional[Callable[[], bool]] = None, retry_config: Optional["RetryConfig"] = None):
-    """
-    Decorator to add a function as a task to a DAG.
+    """Decorator to add a function as a task to a DAG.
+    
+    This decorator provides a convenient way to register functions as DAG nodes
+    without explicitly calling dag.add_node(). The decorated function can be
+    either synchronous or asynchronous.
     
     Args:
-        dag: The DAG to add the task to
-        name: Name of the task
-        dependencies: List of dependency task names
-        condition: Optional condition function that must return True for the task to execute
-        retry_config: Optional retry configuration for failed executions
+        dag: The DAG instance to add the task to.
+        name: Unique name for the task within the DAG.
+        dependencies: List of task names this task depends on.
+            The task will only execute after all dependencies complete successfully.
+        condition: Optional function that must return True for the task to execute.
+            If False, the task will be skipped.
+        retry_config: Optional retry configuration for handling failed executions.
         
     Returns:
-        Decorator function
+        Decorator function that registers the wrapped function as a DAG task.
+        
+    Example:
+        >>> dag = DAG("example")
+        >>> @task(dag, "process_data", dependencies=["load_data"])
+        ... def process_data():
+        ...     return "processed"
     """
     def decorator(func):
         # Add the function as a node to the DAG

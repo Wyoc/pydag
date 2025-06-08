@@ -9,13 +9,25 @@ if TYPE_CHECKING:
 
 
 def visualize_dag(graph: nx.DiGraph, nodes: Dict[str, "Node"], filename: Optional[str] = None) -> None:
-    """
-    Visualize the DAG.
+    """Visualize the DAG structure and node execution statuses.
+    
+    Creates a visual representation of the DAG showing nodes as colored circles
+    based on their execution status and edges representing dependencies.
     
     Args:
-        graph: NetworkX graph representing the DAG structure
-        nodes: Dictionary mapping node names to Node objects
-        filename: If provided, save the visualization to this file
+        graph: NetworkX DiGraph representing the DAG structure.
+        nodes: Dictionary mapping node names to Node objects with status info.
+        filename: Optional file path to save the visualization. If not provided,
+            displays the plot interactively.
+            
+    Note:
+        Node colors indicate status:
+        - Gray: Pending
+        - Blue: Running  
+        - Green: Completed
+        - Red: Failed
+        - Orange: Skipped
+        - Yellow: Condition not met
     """
     plt.figure(figsize=(12, 8))
     pos = nx.spring_layout(graph)
