@@ -139,6 +139,152 @@ def run_examples():
     
     # Visualize the executed DAG
     dag.visualize()
+    
+    # Demonstrate parallel branches
+    print("\n" + "="*50)
+    print("PARALLEL BRANCH EXECUTION DEMO")
+    print("="*50)
+    
+    run_parallel_branch_example()
+
+
+def run_parallel_branch_example():
+    """Demonstrate parallel branch execution capabilities."""
+    # Create a DAG with distinct parallel branches
+    branch_dag = DAG("parallel_branches_demo", max_workers=4)
+    
+    # Root task that starts everything
+    @task(branch_dag, "data_source")
+    def data_source():
+        print("📊 Loading initial data...")
+        time.sleep(0.5)
+        return {
+            "users": list(range(1000)),
+            "orders": list(range(5000)),
+            "products": list(range(500))
+        }
+    
+    # Branch 1: User processing pipeline
+    @task(branch_dag, "process_users", dependencies=["data_source"])
+    def process_users():
+        print("👥 Processing user data...")
+        time.sleep(1.0)  # Simulate processing time
+        data = branch_dag.nodes["data_source"].result
+        processed = len(data["users"]) * 2
+        print(f"👥 Processed {processed} user records")
+        return processed
+    
+    @task(branch_dag, "user_analytics", dependencies=["process_users"])
+    def user_analytics():
+        print("📈 Running user analytics...")
+        time.sleep(0.8)
+        user_count = branch_dag.nodes["process_users"].result
+        analytics = {"active_users": user_count // 2, "new_users": user_count // 4}
+        print(f"📈 Analytics: {analytics}")
+        return analytics
+    
+    # Branch 2: Order processing pipeline
+    @task(branch_dag, "process_orders", dependencies=["data_source"])
+    def process_orders():
+        print("🛒 Processing order data...")
+        time.sleep(1.2)  # Different processing time
+        data = branch_dag.nodes["data_source"].result
+        processed = len(data["orders"]) * 1.5
+        print(f"🛒 Processed {processed} order records")
+        return processed
+    
+    @task(branch_dag, "order_analytics", dependencies=["process_orders"])
+    def order_analytics():
+        print("💰 Running order analytics...")
+        time.sleep(0.6)
+        order_count = branch_dag.nodes["process_orders"].result
+        analytics = {"total_revenue": order_count * 25, "avg_order": 25}
+        print(f"💰 Analytics: {analytics}")
+        return analytics
+    
+    # Branch 3: Product processing pipeline
+    @task(branch_dag, "process_products", dependencies=["data_source"])
+    def process_products():
+        print("🏷️  Processing product data...")
+        time.sleep(0.9)
+        data = branch_dag.nodes["data_source"].result
+        processed = len(data["products"]) * 3
+        print(f"🏷️  Processed {processed} product records")
+        return processed
+    
+    @task(branch_dag, "product_recommendations", dependencies=["process_products"])
+    def product_recommendations():
+        print("🎯 Generating product recommendations...")
+        time.sleep(0.7)
+        product_count = branch_dag.nodes["process_products"].result
+        recommendations = {"trending": product_count // 10, "personalized": product_count // 5}
+        print(f"🎯 Recommendations: {recommendations}")
+        return recommendations
+    
+    # Convergence point - combines all analytics
+    @task(branch_dag, "generate_dashboard", dependencies=["user_analytics", "order_analytics", "product_recommendations"])
+    def generate_dashboard():
+        print("📋 Generating final dashboard...")
+        time.sleep(0.3)
+        
+        user_data = branch_dag.nodes["user_analytics"].result
+        order_data = branch_dag.nodes["order_analytics"].result
+        product_data = branch_dag.nodes["product_recommendations"].result
+        
+        dashboard = {
+            "users": user_data,
+            "orders": order_data,
+            "products": product_data,
+            "generated_at": time.time()
+        }
+        print("📋 Dashboard generated successfully!")
+        return dashboard
+    
+    # Show parallel branches detected
+    branches = branch_dag.identify_parallel_branches()
+    print(f"\n🔍 Detected {len(branches)} parallel branches:")
+    for i, branch in enumerate(branches, 1):
+        print(f"   Branch {i}: {' → '.join(branch)}")
+    
+    print("\n⚡ Executing with parallel branch optimization...")
+    start_time = time.time()
+    
+    # Execute with parallel branches (fallback to regular if no branches detected)
+    if len(branches) > 1:
+        results = branch_dag.execute(parallel_branches=True)
+    else:
+        print("Note: Falling back to regular async execution")
+        results = branch_dag.execute(async_execution=True)
+    
+    parallel_time = time.time() - start_time
+    print(f"\n✅ Parallel execution completed in {parallel_time:.2f} seconds")
+    
+    # Reset for comparison
+    for node in branch_dag.nodes.values():
+        node.status = node.status.__class__.PENDING
+        node.result = None
+        node.error = None
+        node.execution_time = 0.0
+    
+    print("\n🐌 Executing with regular async mode for comparison...")
+    start_time = time.time()
+    
+    # Execute with regular async
+    results_regular = branch_dag.execute(async_execution=True, parallel_branches=False)
+    
+    regular_time = time.time() - start_time
+    print(f"✅ Regular execution completed in {regular_time:.2f} seconds")
+    
+    # Show performance improvement
+    improvement = ((regular_time - parallel_time) / regular_time) * 100
+    print(f"\n🚀 Performance improvement: {improvement:.1f}% faster with parallel branches")
+    
+    # Show final dashboard
+    print("\n📊 Final Dashboard:")
+    dashboard = results.get("generate_dashboard", {})
+    for section, data in dashboard.items():
+        if isinstance(data, dict):
+            print(f"   {section.title()}: {data}")
 
 
 if __name__ == "__main__":
